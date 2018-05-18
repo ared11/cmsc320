@@ -1,0 +1,3 @@
+"0","ggplot(traindata, aes(as.Date(Date), Close)) + geom_line() + ylab(""Closing Price"") + xlab(""Date"") +"
+"0","    geom_ma(ma_fun = SMA, n = 26) +"
+"0","    geom_ma(ma_fun = SMA, n = 12, color = ""red"")"

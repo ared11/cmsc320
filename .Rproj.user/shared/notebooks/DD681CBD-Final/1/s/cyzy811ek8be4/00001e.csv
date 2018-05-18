@@ -1,0 +1,7 @@
+"0","p <- traindata %>%"
+"0","  plot_ly(x = ~Date, type=""candlestick"","
+"0","          open = ~traindata$Open, close = ~traindata$Close,"
+"0","          high = ~traindata$High, low = ~traindata$Low) %>%"
+"0","  layout(title = ""Bitcoin Candlestick Chart"","
+"0","         xaxis = list(rangeslider = list(visible = F)))"
+"0","p"

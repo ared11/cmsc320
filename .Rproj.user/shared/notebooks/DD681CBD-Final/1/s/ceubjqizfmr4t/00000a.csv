@@ -1,0 +1,3 @@
+"0","traindata$Market.Cap <- as.numeric(traindata$Market.Cap)"
+"0","traindata$Volume <- as.numeric(traindata$Volume)"
+"0","traindata$Date <- as.POSIXct(as.Date(anytime(traindata$Date)))"

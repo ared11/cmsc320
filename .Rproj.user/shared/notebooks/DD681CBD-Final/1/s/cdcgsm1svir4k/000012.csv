@@ -1,0 +1,2 @@
+"0","qplot(traindata$MACD, traindata$Close, data = traindata, main = ""Relationship between MACD and Bitcoin Closing Price"") +"
+"0","  stat_smooth(method=""lm"", col=""red"") "

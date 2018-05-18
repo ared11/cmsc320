@@ -1,0 +1,1 @@
+"0","ggplot(traindata, aes(as.Date(Date), Close)) + geom_line() + ylab(""Closing Price"") + xlab(""Date"")"

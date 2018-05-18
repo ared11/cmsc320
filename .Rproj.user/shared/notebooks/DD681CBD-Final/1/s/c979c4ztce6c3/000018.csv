@@ -1,0 +1,3 @@
+"0","traindata <- cbind(traindata, ema(traindata$Close, 26)-ema(traindata$Close, 12))"
+"0","colnames(traindata)[8] <- ""MACD"""
+"0","traindata"

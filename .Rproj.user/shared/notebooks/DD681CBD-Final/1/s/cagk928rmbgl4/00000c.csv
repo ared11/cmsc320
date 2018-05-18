@@ -1,0 +1,3 @@
+"0","traindata <- cbind(traindata, (traindata$Close-traindata$Open > 0))"
+"0","colnames(traindata)[9] <- ""diff"""
+"0","traindata"

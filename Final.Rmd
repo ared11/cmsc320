@@ -1,0 +1,193 @@
+---
+title: "Final Project"
+author: "Akhil Reddy"
+date: "5/18/2018"
+output: html_document
+---
+
+This is my final project for my "Introduction to Data Science" class. Through this class we have learned various techniques in order to gather, manipulate, and analyze data. Towards the end of the class we explored machine learning and its application to data. We learned various techniques such as the use of random forests for the forecasting of data.
+
+Now for a bit on Bitcoin. Bitcoin is the first cryptocurrency. Cryptocurrency are a relatively new technology with the potential to revolutionize the world. The origins of Bitcoin are unknown. The bitcoin whitepaper was anonymously authored. Bitcoin's price level has broken all expectations. This past December it hit an all time high of $19,783.06. Bitcoin has paved the way for various other cryptocurrencies. Daily cryptocurrency transaction volumes are rapidly increasing.
+
+For my final project I will attempt to create a model to predict the future price of Bitcoin. In this project I will attempt time series forecasting. Time series data is used for forecasting something that is changing over time. 
+
+Upon doing some research I realized an inherent problem with time series forecasting that I along with the reader should be aware of. When training the random forest you generally train the data by randomly sampling the data and then estimating errors with the rest. When data is coming from a time series you cannot do this as you lose the sequential structure of the data. So in order to build my random forest I must do so in a way that maintains the important sequential structure of the data. More on this here: https://stats.stackexchange.com/questions/14099/using-k-fold-cross-validation-for-time-series-model-selection
+
+Lets start by importing the neccesary libraries for our code.
+
+```{r}
+library(xts)
+library(anytime)
+library(ggplot2)
+library(plotly)
+library(tidyquant)
+library(QuantTools)
+library(randomForest)
+```
+
+
+First, we must gather and tidy the data. We obtain the data here: https://www.kaggle.com/vennaa/notebook-forecasting-bitcoins. Although this project takes some inspiration from this Kaggle, we make several different design choices.
+
+Lets first input the file using the built in read.csv function that R provides.
+
+```{r}
+traindata = read.csv("bitcoinset.csv")
+```
+
+Lets list the first few elements:
+
+```{r}
+head(traindata)
+```
+
+Let's analyze each feature of the data set and analyze its potential relevancy to price.
+
+```{r}
+colnames(traindata)
+```
+
+So we see here that we have columns. I hypothesize that the Open, High, Low, Close, Volume, and Market Cap may all potentially be used to determine the future price. After following the cryptomarkets for a couple of years now, I know that price action generally follows large changes in volume so I am interested to see how this plays a role in changes in price. 
+
+We need to tidy up our data so that it is useful for us. We need to convert the Volume and Market Cap columns into numerics. Since our model is a time series we will change the date column to XTS.
+
+```{r}
+traindata$Market.Cap <- as.numeric(traindata$Market.Cap)
+traindata$Volume <- as.numeric(traindata$Volume)
+traindata$Date <- as.POSIXct(as.Date(anytime(traindata$Date)))
+```
+
+Upon further examination of this data, we see that the volume column is missing some values. The Kaggle that this project took inspiration from chose to omit the volume columns for its forecasting. I would like to use the volumn column as I believe it is relevant to price action. So in order to use this data we must some how fill in the missing columns for volume. I found a similar Kaggle that does the same (https://www.kaggle.com/ara0303/forecasting-of-bitcoin-prices/code). This Kaggle filled in the missing volume column by utilizing the high and low price of the day. Generally, large price swings would indicate high volume. Although I have some qualms with this method, it is the best I could find. Not many of the dates are missing volumn columns so the inaccuracy of these entities should not affect the entire model greatly.
+
+The approach taken in the above Kaggle to fill in missing volume, finds the difference between the high and low of the day and then adds it as a column. It then differentiates between three tiers: difference < 50, 100 > difference > 150, 150 > difference > 350 and fills in the volume based on the average for those differences from the available data. I follow a similar approach.
+
+```{r}
+traindata <- cbind(traindata, traindata$High-traindata$Low)
+colnames(traindata)[8] <- "diff"
+
+fifty_avg <- round(mean(traindata$Volume[traindata$a < 50], na.rm = TRUE), digits = 2)
+hun_avg <- round(mean(traindata$Volume[traindata$diff > 50 & traindata$diff < 100], na.rm = TRUE), digits = 2)
+hf_avg <- round(mean(traindata$Volume[traindata$diff > 100 & traindata$diff < 150], na.rm = TRUE), digits = 2)
+th_avg <- round(mean(traindata$Volume[traindata$diff > 150 & traindata$diff < 350], na.rm = TRUE), digits = 2)
+
+for(i in 1:nrow(traindata)){
+  if(is.na(traindata[i,6])){
+    if(traindata$diff[i] < 50){
+      traindata$Volume[i] <- fifty_avg
+    } else if(traindata$diff[i] < 100){
+      traindata$Volume[i] <- hun_avg
+    } else if(traindata$diff[i] < 150){
+      traindata$Volume[i] <- hf_avg
+    } else if(traindata$diff[i] < 350){
+      traindata$Volume[i] <- th_avg
+    }else
+      print("Uncaught Title")
+  }
+}
+traindata <- traindata[, - 8]
+
+head(traindata)
+```
+
+Lets reorder the data in ascending order:
+
+```{r}
+traindata <- traindata %>% arrange(as.numeric(traindata$Date))
+head(traindata)
+```
+
+
+Exploratory Data Analysis
+
+Now that we have cleaned up our data we can move on to analyze the data. Data analysis can be used to get a general idea of how our data is distributed and for spotting obvious trends. For more on this check out: http://www.hcbravo.org/IntroDataSci/bookdown-notes/part-exploratory-data-analysis.html. Utilizing the summary function in R we can learn more about the different features of our data.
+
+```{r}
+summary(traindata)
+```
+
+From this we see the volatiliy of Bitcoins price. There is a clear evident up-trend. Lets visualize the Bitcoin's price using ggplot.
+
+```{r}
+ggplot(traindata, aes(as.Date(Date), Close)) + geom_line() + ylab("Closing Price") + xlab("Date")
+```
+
+Traders often use candlestick charts to when trading. Candlestick charts indicate the high, low, open, and close for the day. More on this here: https://www.investopedia.com/terms/c/candlestick.asp. Lets use a different R library to show this. Candlestick plots are widely used because they display a wide array of information all in one chart.
+
+```{r}
+p <- traindata %>%
+  plot_ly(x = ~Date, type="candlestick",
+          open = ~traindata$Open, close = ~traindata$Close,
+          high = ~traindata$High, low = ~traindata$Low) %>%
+  layout(title = "Bitcoin Candlestick Chart",
+         xaxis = list(rangeslider = list(visible = F)))
+
+p
+```
+
+This produces an interactive zoomable chart to better get a sense of the of the data for a particular time period.
+
+Another widely traded on technical indicator used in stocks and crypto trading is known as the MACD. MACD stands for Moving Average Convergence Divergence. The MACD is calculated by subtracted two exponential moving averages. When there is a crossover of the two exponential moving averages this signals a buy or a sell. When the the MACD rises significantly this indicates overbought or oversold territory. Lets see what this looks like on the chart.
+
+```{r}
+ggplot(traindata, aes(as.Date(Date), Close)) + geom_line() + ylab("Closing Price") + xlab("Date") +
+    geom_ma(ma_fun = SMA, n = 26) +
+    geom_ma(ma_fun = SMA, n = 12, color = "red")
+```
+
+MACD is so widely traded on it would be interesting to include this as a feature in our dataset so that we can include it in our machine learning algorithms later on. In order to do this I calculate the difference between the 26-day and 12-day exponential moving average and include it as a column. These perameters can be played with later on.
+
+```{r}
+traindata <- cbind(traindata, ema(traindata$Close, 26)-ema(traindata$Close, 12))
+colnames(traindata)[8] <- "MACD"
+head(traindata)
+```
+
+Predictive Modeling
+
+Now on to the fun part. Let's see what different ways we can try to accomplish the seemingly impossible task of forecasting the price of Bitcoin. Initially, i've had a few ideas on how to do this. A simple linear regression model could be used. This is a form of regression analysis that attempts to find a relationship between a set of variables. In this case it would be the seven features of our dataset. A model like this seems rather easy to create so lets check it out.
+
+So lets try to see if there is a model where we can use the MACD attribute we calculated to forecast the closing price of Bitcoin. So Closing Price = B0 + B1 *MACD.
+
+Lets use R's lm function. The lm function is used to fit linear models.
+```{r}
+mod = lm(traindata$Close ~ scale(traindata$MACD, center=TRUE, scale=FALSE), data = traindata)
+summary(mod)
+```
+
+```{r}
+qplot(traindata$MACD, traindata$Close, data = traindata, main = "Relationship between MACD and Bitcoin Closing Price") +
+  stat_smooth(method="lm", col="red") 
+```
+
+I centered the data on MACD to account for the large spread in Bitcoin price, in an attempt to create a more accurate model. Visually looking at the scatterplot the fitted line does not seem to follow any pattern. Although we have a small p-value our R2 is a mere .35. This indicates taht a only 35% of the variance observed in price can be explained by the MACD.
+
+Accurately predicting the price of Bitcoin seems to be challenging. Lets see if rather we can do a binary classification and predict the direction of price day to day. In order to do this we must add another feature onto our dataset. To use this I added a boolean feature that is denoted as False if the price went down and True if the price went up. This could potentially be used later on with a trading bot where True signifies a buy signal and False indicated a sell signal.
+
+```{r}
+traindata <- cbind(traindata, (traindata$Close-traindata$Open > 0))
+colnames(traindata)[9] <- "diff"
+head(traindata)
+```
+
+Now lets see if can create a Random Forest using the MACD and Volume to predict the direction of price. Although in real life trading algorithms we would probably use change in volume. Random forests are random decision trees that learn by randomly sampling data. It essentially builds multiple decision trees and then merges them to make a more accurate model.
+
+```{r}
+traindata$diff <- as.character(traindata$diff)
+traindata$diff <- as.factor(traindata$diff)
+output.forest <- randomForest(traindata$diff ~ MACD + Volume, 
+           data = traindata, na.action = na.omit)
+
+# View the forest results.
+print(output.forest) 
+```
+
+From the above data we can see that our model is extremely inaccurate. This is probably due to a multitude of factors. Volume is most likely an extremely poor indicator of price. Instead we probably need to look at change in volume from the previous day.
+
+Generally, random forests are used with far more features. It would be interesting to see how that would affect bitcoin prices.
+
+Additional Reading:
+
+http://scholar.google.com/scholar_url?url=https://arxiv.org/pdf/1410.1231&hl=en&sa=X&scisig=AAGBfm2CbqDOWqS92yZ3q2RDkAu96SGauw&nossl=1&oi=scholarr
+
+^ The above article talks about the efficacy of using bayesian regression for bitcoin price. The study done at MIT, shows that bayesian regression is successful at predicting bitcoin price changes. An idea I had was for creating a random forest where each node used bayesian regression where a multitude of factors were used including sentiment analysis to create a better model. This could be a potential topic for future research.
+
+
